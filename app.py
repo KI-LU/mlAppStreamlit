@@ -219,18 +219,7 @@ def apply_custom_styling():
             z-index: 999;
         }}
            
-        /* Untere linke Ecke Dreieck - angepasst nach Seitentyp */
-        .bottom-left-triangle {{
-            position: fixed;
-            bottom: 0;
-            left: 0; /* right yerine left kullanarak sol tarafa taşıdık */
-            width: 0;
-            height: 0;
-            border-bottom: {bottom_left_size} solid #008E88;
-            border-right: {bottom_left_right} solid transparent; /* border-left yerine border-right kullanarak sola hizaladık */
-            z-index: 999;
-        }}
-        
+          
         /* =============== GELİŞMİŞ CSS KODLARI =============== */
         
         /* Multiselect tag'leri için renkleri özelleştirme */
@@ -626,10 +615,11 @@ elif st.session_state.active_components["data_sampling"]:
         with col1:
             test_size = st.slider("Testdaten-Anteil (%)", 10, 50, 30) / 100
         with col2:
-            random_state = st.number_input("Random State (für Reproduzierbarkeit)", 0, 100, 42)
+            random_state = 42
             
         # Stratifiziertes Sampling bei Klassifikationsproblemen
-        stratify_option = st.checkbox("Stratifiziertes Sampling", value=True)
+        st.markdown("**Stratifiziertes Sampling ist standardmäßig aktiviert.**")
+        stratify_option = True  # Immer aktiviert
         
         if st.button("Daten aufteilen"):
             X = selected_data[features]
@@ -1338,6 +1328,7 @@ elif st.session_state.active_components["evaluation"]:
         if st.button("Zurück zur Modellierung"):
             activate_component("modeling")
 # 7. Prediction Komponente (Orange-Style Modell-Laden Workflow)
+# 7. Prediction Komponente (2-Adımlı Yapı)
 elif st.session_state.active_components["prediction"]:
     st.header("7. Prediction", divider="orange")
     
@@ -1346,67 +1337,96 @@ elif st.session_state.active_components["prediction"]:
         st.session_state.loaded_models = {}
     if 'prediction_dataset' not in st.session_state:
         st.session_state.prediction_dataset = None
+    if 'prediction_step' not in st.session_state:
+        st.session_state.prediction_step = "preparation"
+    if 'prediction_columns' not in st.session_state:
+        st.session_state.prediction_columns = {}
     
-    # Hauptbereich für Prediction teilen
-    col1, col2 = st.columns([1, 2])
+    # Progress Bar für die Schritte
+    progress_steps = ["Vorbereitung", "Ergebnisse"]
+    current_step_index = 0 if st.session_state.prediction_step == "preparation" else 1
     
-    # Linke Spalte: Orange-Style Workflow (Modelle laden, Datei laden)
-    with col1:
-        st.subheader("Workflow")
+    # Fortschrittsanzeige
+    st.progress((current_step_index + 1) / len(progress_steps))
+    st.write(f"**Schritt {current_step_index + 1} von {len(progress_steps)}: {progress_steps[current_step_index]}**")
+    
+    # SCHRITT 1: VORBEREITUNG
+    if st.session_state.prediction_step == "preparation":
+        st.subheader("Schritt 1: Vorbereitung")
+        st.write("Laden Sie Ihre Modelle und Datensätze, und konfigurieren Sie die Spalten.")
         
-        # Orange-Style Load Model Widget
-        st.write("#### 📂 Load Model")
+        # Hauptbereich in 3 Spalten aufteilen
+        col1, col2, col3 = st.columns([1, 1, 1])
         
-        # Modell 1 laden
-        with st.expander("Modell 1 laden", expanded=True):
-            load_model1 = st.file_uploader("Modell 1 (.pkl)", type="pkl", key="model1_uploader")
-            if load_model1 is not None:
+        # Spalte 1: Modelle laden
+        with col1:
+            st.write("#### 📂 Modelle laden")
+            
+            # Modell 1 laden
+            with st.expander("Modell 1", expanded=True):
+                load_model1 = st.file_uploader("Modell 1 (.pkl)", type="pkl", key="model1_uploader")
+                if load_model1 is not None:
+                    try:
+                        import pickle
+                        model1 = pickle.load(load_model1)
+                        model_name = load_model1.name
+                        st.session_state.loaded_models[model_name] = model1
+                        st.success(f"✅ {model_name}")
+                    except Exception as e:
+                        st.error(f"❌ Fehler: {str(e)}")
+            
+            # Modell 2 laden
+            with st.expander("Modell 2", expanded=False):
+                load_model2 = st.file_uploader("Modell 2 (.pkl)", type="pkl", key="model2_uploader")
+                if load_model2 is not None:
+                    try:
+                        import pickle
+                        model2 = pickle.load(load_model2)
+                        model_name = load_model2.name
+                        st.session_state.loaded_models[model_name] = model2
+                        st.success(f"✅ {model_name}")
+                    except Exception as e:
+                        st.error(f"❌ Fehler: {str(e)}")
+            
+            # Aktuell geladene Modelle anzeigen
+            if st.session_state.loaded_models:
+                st.write("**Geladene Modelle:**")
+                for model_name in st.session_state.loaded_models.keys():
+                    st.write(f"• {model_name}")
+        
+        # Spalte 2: Datensatz laden
+        with col2:
+            st.write("#### 📊 Datensatz laden")
+            
+            uploaded_file = st.file_uploader("Neuen Datensatz laden (.csv)", type="csv")
+            if uploaded_file is not None:
                 try:
-                    import pickle
-                    model1 = pickle.load(load_model1)
-                    # Verwende den originalen Dateinamen statt der generischen Bezeichnung
-                    model_name = load_model1.name
-                    st.session_state.loaded_models[model_name] = model1
-                    st.success(f"Modell erfolgreich geladen: {model_name} ({type(model1).__name__})")
+                    new_data = pd.read_csv(uploaded_file)
+                    st.session_state.prediction_dataset = new_data
+                    st.success(f"✅ Datensatz geladen")
+                    st.write(f"**Größe:** {new_data.shape[0]} Zeilen, {new_data.shape[1]} Spalten")
+                    
+                    # Kleine Vorschau
+                    with st.expander("Datensatz-Vorschau", expanded=False):
+                        st.dataframe(new_data.head(3))
+                        
                 except Exception as e:
-                    st.error(f"Fehler beim Laden des Modells: {str(e)}")
+                    st.error(f"❌ Fehler beim Laden: {str(e)}")
+            
+            # Aktueller Datensatz Status
+            if st.session_state.prediction_dataset is not None:
+                st.write("**Aktueller Datensatz:**")
+                st.write(f"• {st.session_state.prediction_dataset.shape[0]} Zeilen")
+                st.write(f"• {st.session_state.prediction_dataset.shape[1]} Spalten")
         
-        # Modell 2 laden
-        with st.expander("Modell 2 laden", expanded=True):
-            load_model2 = st.file_uploader("Modell 2 (.pkl)", type="pkl", key="model2_uploader")
-            if load_model2 is not None:
-                try:
-                    import pickle
-                    model2 = pickle.load(load_model2)
-                    # Verwende den originalen Dateinamen statt der generischen Bezeichnung
-                    model_name = load_model2.name
-                    st.session_state.loaded_models[model_name] = model2
-                    st.success(f"Modell erfolgreich geladen: {model_name} ({type(model2).__name__})")
-                except Exception as e:
-                    st.error(f"Fehler beim Laden des Modells: {str(e)}")
-        
-        # Orange-Style File Widget
-        st.write("#### 📊 File")
-        uploaded_file = st.file_uploader("Neuen Datensatz laden (.csv)", type="csv")
-        if uploaded_file is not None:
-            try:
-                new_data = pd.read_csv(uploaded_file)
-                st.session_state.prediction_dataset = new_data
-                st.success(f"Datensatz erfolgreich geladen: {new_data.shape[0]} Zeilen, {new_data.shape[1]} Spalten")
-                
-                # Vorschau anzeigen
-                st.write("Vorschau des Datensatzes:")
-                st.dataframe(new_data.head(5))
-            except Exception as e:
-                st.error(f"Fehler beim Laden der Datei: {str(e)}")
-        
-        # Orange-Style Select Columns Widget
-        if st.session_state.prediction_dataset is not None:
-            st.write("#### 🔍 Select Columns")
-            with st.expander("Spalten auswählen", expanded=True):
-                # Klassenvariable auswählen
+        # Spalte 3: Spalten konfigurieren
+        with col3:
+            st.write("#### 🔍 Spalten konfigurieren")
+            
+            if st.session_state.prediction_dataset is not None:
                 all_columns = st.session_state.prediction_dataset.columns.tolist()
                 
+                # Klassenvariable auswählen
                 target_column = st.selectbox(
                     "Klassenvariable (Target)",
                     options=all_columns,
@@ -1414,96 +1434,118 @@ elif st.session_state.active_components["prediction"]:
                 )
                 
                 # Features auswählen
+                available_features = [col for col in all_columns if col != target_column]
                 feature_columns = st.multiselect(
-                    "Features",
-                    options=[col for col in all_columns if col != target_column],
-                    default=[col for col in all_columns if col != target_column]
+                    "Features auswählen",
+                    options=available_features,
+                    default=available_features[:5] if len(available_features) > 5 else available_features
                 )
                 
-                # In Session State speichern
-                if st.button("Spalten übernehmen", key="select_cols_btn"):
+                # Konfiguration speichern
+                if st.button("✅ Konfiguration übernehmen", type="primary"):
                     st.session_state.prediction_columns = {
                         'target': target_column,
                         'features': feature_columns
                     }
-                    st.success(f"Spaltenauswahl übernommen: {len(feature_columns)} Features und 1 Zielvariable")
+                    st.success("Spalten konfiguriert!")
+            else:
+                st.info("Laden Sie zuerst einen Datensatz.")
+        
+        # Status-Check und Weiter-Button
+        st.markdown("---")
+        
+        # Bereitschafts-Check
+        ready_conditions = [
+            ("Mindestens ein Modell geladen", len(st.session_state.loaded_models) > 0),
+            ("Datensatz geladen", st.session_state.prediction_dataset is not None),
+            ("Spalten konfiguriert", bool(st.session_state.prediction_columns))
+        ]
+        
+        # Status anzeigen
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.write("**Bereitschafts-Check:**")
+            all_ready = True
+            for condition, status in ready_conditions:
+                icon = "✅" if status else "❌"
+                st.write(f"{icon} {condition}")
+                if not status:
+                    all_ready = False
+        
+        with col2:
+            if all_ready:
+                if st.button("➡️ Zu den Ergebnissen", type="primary", use_container_width=True):
+                    st.session_state.prediction_step = "results"
+                    st.rerun()
+            else:
+                st.button("➡️ Zu den Ergebnissen", disabled=True, use_container_width=True)
+                st.caption("Vervollständigen Sie zuerst alle Schritte")
     
-    # Rechte Spalte: Predictions und Confusion Matrix
-    with col2:
-        # Überprüfen, ob alle Voraussetzungen erfüllt sind
-        ready_for_prediction = (
-            len(st.session_state.loaded_models) > 0 and 
-            st.session_state.prediction_dataset is not None and
-            'prediction_columns' in st.session_state
+    # SCHRITT 2: ERGEBNISSE
+    elif st.session_state.prediction_step == "results":
+        st.subheader("Schritt 2: Prediction Ergebnisse")
+        
+        # Zurück-Button
+        col1, col2, col3 = st.columns([1, 4, 1])
+        with col1:
+            if st.button("⬅️ Zurück zur Vorbereitung"):
+                st.session_state.prediction_step = "preparation"
+                st.rerun()
+        
+        # Daten vorbereiten
+        X_pred = st.session_state.prediction_dataset[st.session_state.prediction_columns['features']]
+        y_true = st.session_state.prediction_dataset[st.session_state.prediction_columns['target']]
+        
+        # Modell auswählen
+        model_options = list(st.session_state.loaded_models.keys())
+        selected_model_key = st.selectbox(
+            "🔮 Modell für Vorhersage auswählen:",
+            options=model_options,
+            key="model_selector"
         )
         
-        if ready_for_prediction:
-            st.subheader("Modellvorhersagen")
-            
-            # Daten vorbereiten
-            X_pred = st.session_state.prediction_dataset[st.session_state.prediction_columns['features']]
-            y_true = st.session_state.prediction_dataset[st.session_state.prediction_columns['target']]
-            
-            # Modell für Vorhersage auswählen
-            model_options = list(st.session_state.loaded_models.keys())
-            selected_model_key = st.selectbox(
-                "Modell für Vorhersage auswählen",
-                options=model_options
-            )
-            
-            selected_model = st.session_state.loaded_models[selected_model_key]
-            
-            # Orange-Style Predictions Widget
-            st.write("#### 🔮 Predictions")
-            
-            with st.spinner("Berechne Vorhersagen..."):
-                # Vorhersagen
-                # Modeli pickle'dan çıkardığımızda yapısını kontrol et
+        selected_model = st.session_state.loaded_models[selected_model_key]
+        
+        # Vorhersagen berechnen
+        with st.spinner("Berechne Vorhersagen..."):
+            try:
+                # Model-Typ prüfen und entsprechend verarbeiten
                 if isinstance(selected_model, dict):
-                    # Model paketi yapısında
+                    # Model package structure
                     model = selected_model['model']
                     scaler = selected_model.get('scaler')
                     standardize = selected_model.get('standardize', False)
                     feature_names = selected_model.get('feature_names')
                     
-                    # Aynı özellikleri kullan
+                    # Feature-Namen prüfen
                     if feature_names:
-                        # Sadece gerekli sütunları seç ve doğru sırada kullan
                         missing_cols = [col for col in feature_names if col not in X_pred.columns]
                         if missing_cols:
-                            st.error(f"Folgende Spalten fehlen: {', '.join(missing_cols)}")
+                            st.error(f"❌ Fehlende Spalten: {', '.join(missing_cols)}")
                             st.stop()
-                        
                         X_pred = X_pred[feature_names]
                     
-                    # Standardizasyon uygula
+                    # Standardisierung anwenden
                     if standardize and scaler:
                         X_pred_processed = scaler.transform(X_pred)
                         y_pred = model.predict(X_pred_processed)
                     else:
                         y_pred = model.predict(X_pred)
                 else:
-                    # Direkt model nesnesi
+                    # Direktes Model-Objekt
                     y_pred = selected_model.predict(X_pred)
                 
-                # Wahrscheinlichkeiten (falls verfügbar)
-                proba_available = hasattr(selected_model, 'predict_proba')
-                if proba_available:
-                    y_proba = selected_model.predict_proba(X_pred)
-                
-                # Ergebnisse anzeigen
+                # Ergebnisse vorbereiten
                 results_df = X_pred.copy()
                 results_df['Tatsächlich'] = y_true
                 results_df['Vorhersage'] = y_pred
                 results_df['Korrekt'] = results_df['Tatsächlich'] == results_df['Vorhersage']
                 
-                # Tab-Ansicht
-                eval_tab , view_tab = st.tabs(["Evaluierung" , "Vorhersagen"])
+                # Ergebnisse in Tabs anzeigen
+                tab1, tab2 = st.tabs(["📊 Evaluation", "📋 Detailansicht"])
                 
-                with eval_tab:
-                    # Orange-Style Confusion Matrix Widget
-                    st.write("#### 📊 Confusion Matrix")
-                    
+                with tab1:
                     # Metriken berechnen
                     accuracy = accuracy_score(y_true, y_pred)
                     precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
@@ -1512,53 +1554,58 @@ elif st.session_state.active_components["prediction"]:
                     
                     # Metriken anzeigen
                     col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Accuracy", f"{accuracy:.4f}")
-                    col2.metric("Precision", f"{precision:.4f}")
-                    col3.metric("Recall", f"{recall:.4f}")
-                    col4.metric("F1-Score", f"{f1:.4f}")
+                    col1.metric("🎯 Accuracy", f"{accuracy:.4f}")
+                    col2.metric("⚖️ Precision", f"{precision:.4f}")
+                    col3.metric("🔍 Recall", f"{recall:.4f}")
+                    col4.metric("📈 F1-Score", f"{f1:.4f}")
                     
                     # Confusion Matrix
-                    cm = confusion_matrix(y_true, y_pred)
-                    classes = sorted(pd.Series(y_true).unique())
+                    st.write("#### 📊 Confusion Matrix")
                     
-                    # Normalisierte CM-Option
-                    normalize_cm = st.checkbox("Confusion Matrix normalisieren", value=False)
+                    col1, col2 = st.columns([3, 1])
                     
-                    # Confusion Matrix visualisieren
-                    fig, ax = plt.subplots(figsize=(8, 6))
+                    with col2:
+                        normalize_cm = st.checkbox("Normalisieren", value=False)
                     
-                    if normalize_cm:
-                        cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-                        sns.heatmap(cm_norm, annot=True, fmt='.2f', cmap='Blues', 
-                                  xticklabels=classes, yticklabels=classes)
-                        # Titel mit Modellnamen anzeigen
-                        plt.title(f'Normalisierte Confusion Matrix - {selected_model_key}')
-                    else:
-                        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                                  xticklabels=classes, yticklabels=classes)
-                        # Titel mit Modellnamen anzeigen
-                        plt.title(f'Confusion Matrix - {selected_model_key}')
+                    with col1:
+                        cm = confusion_matrix(y_true, y_pred)
+                        classes = sorted(pd.Series(y_true).unique())
+                        
+                        fig, ax = plt.subplots(figsize=(8, 6))
+                        
+                        if normalize_cm:
+                            cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+                            sns.heatmap(cm_norm, annot=True, fmt='.2f', cmap='Blues', 
+                                      xticklabels=classes, yticklabels=classes, ax=ax)
+                            plt.title(f'Normalisierte Confusion Matrix - {selected_model_key}')
+                        else:
+                            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                                      xticklabels=classes, yticklabels=classes, ax=ax)
+                            plt.title(f'Confusion Matrix - {selected_model_key}')
+                        
+                        plt.ylabel('Tatsächliche Klasse')
+                        plt.xlabel('Vorhergesagte Klasse')
+                        st.pyplot(fig)
                     
-                    plt.ylabel('Tatsächliche Klasse')
-                    plt.xlabel('Vorhergesagte Klasse')
-                    st.pyplot(fig)
-                    
-                    # Detaillierter Klassifikationsbericht
-                    st.subheader("Klassifikationsbericht")
+                    # Klassifikationsbericht
+                    st.write("#### 📋 Detaillierter Klassifikationsbericht")
                     report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
                     report_df = pd.DataFrame(report).transpose()
                     
-                    # Orange-Style formatierte Tabelle
-                    st.dataframe(report_df.style.format({
-                        'precision': '{:.4f}',
-                        'recall': '{:.4f}',
-                        'f1-score': '{:.4f}',
-                        'support': '{:.0f}'
-                    }))
-                with view_tab:
-                    # Anzeige-Optionen
+                    st.dataframe(
+                        report_df.style.format({
+                            'precision': '{:.4f}',
+                            'recall': '{:.4f}',
+                            'f1-score': '{:.4f}',
+                            'support': '{:.0f}'
+                        }),
+                        use_container_width=True
+                    )
+                
+                with tab2:
+                    # Filter-Optionen
                     display_options = st.radio(
-                        "Anzeige filtern nach:",
+                        "Anzeige filtern:",
                         ["Alle anzeigen", "Nur korrekte Vorhersagen", "Nur falsche Vorhersagen"],
                         horizontal=True
                     )
@@ -1571,60 +1618,50 @@ elif st.session_state.active_components["prediction"]:
                     else:
                         filtered_df = results_df
                     
-                    # Anzahl der anzuzeigenden Zeilen
-                    num_rows = st.slider("Anzahl der anzuzeigenden Zeilen", 5, 100, 20)
-                    
+                    # Anzahl der Zeilen
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        num_rows = st.slider("Anzahl Zeilen", 5, 100, 20)
+                    with col2:
+                        if len(filtered_df) > 0:
+                            st.write(f"**Ergebnisse:** {len(filtered_df)} von {len(results_df)}")
+                        
                     # Ergebnisse anzeigen
                     if len(filtered_df) > 0:
                         st.dataframe(filtered_df.head(num_rows), use_container_width=True)
-                        st.info(f"Zeige {min(num_rows, len(filtered_df))} von {len(filtered_df)} Ergebnissen")
                     else:
-                        st.warning(f"Keine Ergebnisse für den Filter '{display_options}'")   
-        else:
-            # Anleitung anzeigen, wenn nicht alles bereit ist
-            st.info("#### 🔍 Anleitung für Predictions")
-            st.write("""
-            Um Vorhersagen wie in Orange durchzuführen, folgen Sie diesen Schritten:
-            
-            1. **Modelle laden**: Verwenden Sie die Funktion 'Load Model', um Ihre gespeicherten Modelle zu laden (.pkl-Format).
-            2. **Datensatz laden**:  Laden Sie einen neuen Datensatz im .csv-Format hoch.
-            3. **Spalten auswählen**: Spalten auswählen: Wählen Sie die Feature-Spalten und die Ziel-Spalte aus.
-            4. **Vorhersagen**: Sobald alles geladen ist, werden die Vorhersagen berechnet und die Ergebnisse angezeigt
-            5. **Evaluierung**: Die Confusion Matrix und andere Metriken helfen bei der Bewertung der Modellergebnisse
-            """)
-            
-            missing_items = []
-            if len(st.session_state.loaded_models) == 0:
-                missing_items.append("- Mindestens ein Modell laden")
-            if st.session_state.prediction_dataset is None:
-                missing_items.append("- Einen neuen Datensatz laden")
-            if 'prediction_columns' not in st.session_state and st.session_state.prediction_dataset is not None:
-                missing_items.append("- Spalten auswählen und übernehmen")
-            
-            if missing_items:
-                st.warning("Fehlende Elemente für Vorhersagen:")
-                for item in missing_items:
-                    st.markdown(item)
-    # Funktionalität zum Speichern von Modellen (Save Model Widget Äquivalent)
-
+                        st.warning(f"Keine Ergebnisse für '{display_options}'")
+                        
+            except Exception as e:
+                st.error(f"❌ Fehler bei der Vorhersage: {str(e)}")
     
-    # Buttons für Navigation
+    # Navigation Buttons (am Ende)
     st.markdown("---")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
     with col1:
-        if st.button("Zurück zur Modellierung"):
+        if st.button("⬅️ Zurück zur Modellierung"):
             activate_component("modeling")
-        
             st.rerun()
-           # Button zum Neustart
-        if st.button("Workflow neu starten"):
+    
+    with col2:
+        if st.session_state.prediction_step == "results":
+            if st.button("🔄 Neue Vorhersage"):
+                st.session_state.prediction_step = "preparation"
+                # Optional: Session state zurücksetzen
+                # st.session_state.loaded_models = {}
+                # st.session_state.prediction_dataset = None  
+                # st.session_state.prediction_columns = {}
+                st.rerun()
+    
+    with col3:
+        if st.button("🔄 Workflow neu starten"):
             activate_component("data_import")
             st.rerun()
+
 else:
-    # Startseite
-    #st.markdown("<h1 style='text-align: center;'>ML-Workflow</h1>", unsafe_allow_html=True)
+    # Startseite (unverändert)
     st.markdown("<h2 style='text-align: center;'>Willkommen bei der ML-Workflow-App</h2>", unsafe_allow_html=True)
-    #st.markdown("<h3 style='text-align: center;'>Bitte wählen Sie in der Seitenleiste einen Schritt aus, um zu beginnen.</h3>", unsafe_allow_html=True)
     st.markdown("""
 <div style='text-align: center; width: 100%;'>
     <p style='font-size: 1.2em;'>Diese App führt Sie durch einen typischen maschinellen Lernablauf.</p>
@@ -1641,15 +1678,9 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-    # Kurze Beschreibung der App
- # st.subheader("Über diese App")
-  #  st.write("""
-                                                                   
-    
     # Beispiel-Workflow als Bild darstellen (optional)
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
-     image_path = os.path.join(os.path.dirname(__file__), "images", "logo.png")
-     st.image(image_path)
-     #        caption="Beispiel eines ML-Workflows in Orange (Platzhalterbild)")    
-     
+        image_path = os.path.join(os.path.dirname(__file__), "images", "logo.png")
+        if os.path.exists(image_path):
+            st.image(image_path)
