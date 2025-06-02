@@ -1451,6 +1451,92 @@ elif st.session_state.active_components["prediction"]:
             else:
                 st.info("Laden Sie zuerst einen Datensatz.")
         
+# Scatter Plot Visualization (NEU HINZUGEFÜGT)
+        if (st.session_state.prediction_dataset is not None and 
+            st.session_state.prediction_columns and 
+            len(st.session_state.prediction_columns.get('features', [])) >= 2):
+            
+            st.markdown("---")
+            st.subheader("📈 Datenvisualisierung")
+            
+            # Scatter Plot Parameter auswählen
+            col_viz1, col_viz2 = st.columns(2)
+            
+            with col_viz1:
+                x_axis = st.selectbox(
+                    "X-Achse",
+                    options=st.session_state.prediction_columns['features'],
+                    key="scatter_x"
+                )
+            
+            with col_viz2:
+                y_axis = st.selectbox(
+                    "Y-Achse", 
+                    options=[col for col in st.session_state.prediction_columns['features'] if col != x_axis],
+                    key="scatter_y"
+                )
+            
+            # Scatter Plot erstellen
+            if x_axis and y_axis:
+                try:
+                    import matplotlib.pyplot as plt
+                    import seaborn as sns
+                    
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    
+                    # Daten für den Plot vorbereiten
+                    plot_data = st.session_state.prediction_dataset.copy()
+                    target_col = st.session_state.prediction_columns['target']
+                    
+                    # Scatter plot mit Farbe basierend auf Target-Variable
+                    if target_col in plot_data.columns:
+                        # Prüfen ob Target numerisch oder kategorisch ist
+                        if plot_data[target_col].dtype in ['object', 'category'] or plot_data[target_col].nunique() <= 10:
+                            # Kategorische Target-Variable mit spezifischen Farben
+                            unique_targets = plot_data[target_col].unique()
+                            
+                            # Spezifische Farbzuordnung für die Kategorien
+                            color_mapping = {
+                                'broken': 'lightblue',     # açık mavi
+                                'heavyload': 'red',        # kırmızı  
+                                'good': 'darkblue'         # koyu mavi
+                            }
+                            
+                            for target_val in unique_targets:
+                                mask = plot_data[target_col] == target_val
+                                # Spezifische Farbe verwenden, falls verfügbar, sonst Standardfarbe
+                                color = color_mapping.get(str(target_val).lower(), 'gray')
+                                
+                                ax.scatter(plot_data.loc[mask, x_axis], 
+                                         plot_data.loc[mask, y_axis],
+                                         c=color, 
+                                         label=f'{target_col}: {target_val}',
+                                         alpha=0.7, s=60)
+                            ax.legend()
+                        else:
+                            # Numerische Target-Variable
+                            scatter = ax.scatter(plot_data[x_axis], plot_data[y_axis], 
+                                               c=plot_data[target_col], 
+                                               cmap='viridis', alpha=0.6, s=50)
+                            plt.colorbar(scatter, ax=ax, label=target_col)
+                    else:
+                        # Kein Target verfügbar - einfacher Scatter Plot
+                        ax.scatter(plot_data[x_axis], plot_data[y_axis], 
+                                 alpha=0.6, s=50, color='steelblue')
+                    
+                    ax.set_xlabel(x_axis)
+                    ax.set_ylabel(y_axis)
+                    ax.set_title(f'Scatter Plot: {x_axis} vs {y_axis}')
+                    ax.grid(True, alpha=0.3)
+                    
+                    # Plot in Streamlit anzeigen
+                    st.pyplot(fig)
+                    plt.close()
+                    
+                    
+                except Exception as e:
+                    st.error(f"❌ Fehler beim Erstellen des Plots: {str(e)}")
+        
         # Status-Check und Weiter-Button
         st.markdown("---")
         
@@ -1547,17 +1633,16 @@ elif st.session_state.active_components["prediction"]:
                 
                 with tab1:
                     # Metriken berechnen
-                    accuracy = accuracy_score(y_true, y_pred)
+                  
                     precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
                     recall = recall_score(y_true, y_pred, average='weighted', zero_division=0)
-                    f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
+                    
                     
                     # Metriken anzeigen
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("🎯 Accuracy", f"{accuracy:.4f}")
-                    col2.metric("⚖️ Precision", f"{precision:.4f}")
-                    col3.metric("🔍 Recall", f"{recall:.4f}")
-                    col4.metric("📈 F1-Score", f"{f1:.4f}")
+                    col1, col2= st.columns(2)
+                    
+                    col1.metric("⚖️ Precision", f"{precision:.4f}")
+                    col2.metric("🔍 Recall", f"{recall:.4f}")
                     
                     # Confusion Matrix
                     st.write("#### 📊 Confusion Matrix")
@@ -1588,19 +1673,7 @@ elif st.session_state.active_components["prediction"]:
                         st.pyplot(fig)
                     
                     # Klassifikationsbericht
-                    st.write("#### 📋 Detaillierter Klassifikationsbericht")
-                    report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
-                    report_df = pd.DataFrame(report).transpose()
                     
-                    st.dataframe(
-                        report_df.style.format({
-                            'precision': '{:.4f}',
-                            'recall': '{:.4f}',
-                            'f1-score': '{:.4f}',
-                            'support': '{:.0f}'
-                        }),
-                        use_container_width=True
-                    )
                 
                 with tab2:
                     # Filter-Optionen
